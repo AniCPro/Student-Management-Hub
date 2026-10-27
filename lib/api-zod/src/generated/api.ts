@@ -87,6 +87,14 @@ export const CreateStudentResponse = zod.object({
 
 
 /**
+ * @summary Check current staff access
+ */
+export const GetStaffAccessResponse = zod.object({
+  "allowed": zod.boolean()
+})
+
+
+/**
  * @summary Get a student
  */
 export const GetStudentParams = zod.object({

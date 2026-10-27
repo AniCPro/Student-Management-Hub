@@ -1,10 +1,14 @@
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
-import { Link, Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
+import { Link, Redirect, Route, Switch, useLocation, Router as WouterRouter } from 'wouter';
+import { ClerkProvider, SignIn, SignUp, useAuth, useClerk, useUser } from '@clerk/react';
+import { publishableKeyFromHost } from '@clerk/react/internal';
+import { shadcn } from '@clerk/themes';
 import {
   useCreateStudent, useDeleteStudent, useGetDashboardSummary,
-  useGetStudent, useListStudents, useUpdateStudent,
+  useGetStaffAccess, useGetStudent, useListStudents, useUpdateStudent,
   getGetDashboardSummaryQueryKey, getGetStudentQueryKey, getListStudentsQueryKey,
+  getGetStaffAccessQueryKey,
 } from '@workspace/api-client-react';
 import type { Student, StudentInput, StudentUpdate, StudentStatus } from '@workspace/api-client-react';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -21,11 +25,67 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useForm } from 'react-hook-form';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowDownUp, ArrowLeft, ArrowRight, BookOpen, Check, ChevronRight, GraduationCap, LayoutDashboard, LoaderCircle, Plus, Search, SlidersHorizontal, Users, X } from 'lucide-react';
+import { ArrowDownUp, ArrowLeft, ArrowRight, ArrowUpRight, BookOpen, Check, ChevronRight, GraduationCap, LayoutDashboard, LoaderCircle, LockKeyhole, Plus, Search, ShieldCheck, SlidersHorizontal, Users, X } from 'lucide-react';
 import NotFound from '@/pages/not-found';
 
 const queryClient = new QueryClient();
 const statusOptions: StudentStatus[] = ['Active', 'Inactive', 'Graduated'];
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, '');
+const clerkPubKey = publishableKeyFromHost(window.location.hostname, import.meta.env.VITE_CLERK_PUBLISHABLE_KEY);
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+
+function stripBase(path: string) {
+  return basePath && path.startsWith(basePath) ? path.slice(basePath.length) || '/' : path;
+}
+
+const clerkAppearance = {
+  theme: shadcn,
+  cssLayerName: 'clerk',
+  options: {
+    logoPlacement: 'inside' as const,
+    logoLinkUrl: basePath || '/',
+    logoImageUrl: `${window.location.origin}${basePath}/logo.svg`,
+  },
+  variables: {
+    colorPrimary: '#244b3e',
+    colorForeground: '#263b34',
+    colorMutedForeground: '#6b7d74',
+    colorDanger: '#a74f43',
+    colorBackground: '#fffdf7',
+    colorInput: '#fffdf7',
+    colorInputForeground: '#263b34',
+    colorNeutral: '#d9ded5',
+    fontFamily: 'DM Sans',
+    borderRadius: '0.65rem',
+  },
+  elements: {
+    rootBox: 'w-full flex justify-center',
+    cardBox: 'bg-[#fffdf7] rounded-2xl w-[440px] max-w-full overflow-hidden shadow-xl shadow-[#19382d]/10',
+    card: '!shadow-none !border-0 !bg-transparent !rounded-none',
+    footer: '!shadow-none !border-0 !bg-transparent !rounded-none',
+    headerTitle: 'text-[#263b34] font-semibold tracking-tight',
+    headerSubtitle: 'text-[#687970]',
+    socialButtonsBlockButtonText: 'text-[#263b34] font-medium',
+    formFieldLabel: 'text-[#36483f] font-medium',
+    footerActionLink: 'text-[#244b3e] font-semibold',
+    footerActionText: 'text-[#687970]',
+    dividerText: 'text-[#758178]',
+    identityPreviewEditButton: 'text-[#244b3e]',
+    formFieldSuccessText: 'text-[#326b50]',
+    alertText: 'text-[#7b4039]',
+    logoBox: 'max-h-12',
+    logoImage: 'max-h-12',
+    socialButtonsBlockButton: 'border-[#d9ded5] bg-[#fffdf7] hover:bg-[#f2f2e9]',
+    formButtonPrimary: 'bg-[#244b3e] hover:bg-[#19382d] text-white font-semibold',
+    formFieldInput: 'border-[#d9ded5] bg-[#fffdf7] text-[#263b34]',
+    footerAction: 'border-t border-[#e7e8df]',
+    dividerLine: 'bg-[#e1e3da]',
+    alert: 'bg-[#fcf0ec] border-[#ebd0c8]',
+    otpCodeFieldInput: 'border-[#d9ded5] bg-[#fffdf7] text-[#263b34]',
+    formFieldRow: 'gap-1.5',
+    main: 'gap-5',
+  },
+};
 
 function RoutedErrorBoundary({ children }: { children: ReactNode }) {
   const [location] = useLocation();
@@ -34,7 +94,10 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
 
 function Shell({ children }: { children: ReactNode }) {
   const [location] = useLocation();
-  const title = location === '/' ? 'Overview' : location.startsWith('/students/') ? 'Student record' : 'Student directory';
+  const { signOut } = useClerk();
+  const { user } = useUser();
+  const title = location === '/dashboard' ? 'Overview' : location.startsWith('/students/') ? 'Student record' : 'Student directory';
+  const userMark = `${user?.firstName?.[0] ?? 'S'}${user?.lastName?.[0] ?? ''}`.toUpperCase();
   return <div className="min-h-[100dvh] bg-background text-foreground md:flex">
     <aside className="flex w-full flex-col bg-sidebar text-sidebar-foreground md:fixed md:inset-y-0 md:w-[246px]">
       <Link href="/" className="flex items-center gap-3 border-b border-sidebar-border px-6 py-5" data-testid="link-home">
@@ -44,8 +107,8 @@ function Shell({ children }: { children: ReactNode }) {
       <div className="px-4 pt-6">
         <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[.18em] text-sidebar-foreground/45">Workspace</p>
         <nav className="space-y-1">
-          <Link href="/" data-testid="link-nav-overview" className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${location === '/' ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground'}`}>
-            <LayoutDashboard size={17} strokeWidth={1.8}/> Overview {location === '/' && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-accent"/>}
+          <Link href="/dashboard" data-testid="link-nav-overview" className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${location === '/dashboard' ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground'}`}>
+            <LayoutDashboard size={17} strokeWidth={1.8}/> Overview {location === '/dashboard' && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-accent"/>}
           </Link>
           <Link href="/students" data-testid="link-nav-students" className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium ${location.startsWith('/students') ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground'}`}>
             <Users size={17} strokeWidth={1.8}/> Students {location.startsWith('/students') && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-accent"/>}
@@ -66,7 +129,7 @@ function Shell({ children }: { children: ReactNode }) {
     <div className="min-w-0 flex-1 md:ml-[246px]">
       <header className="sticky top-0 z-20 flex h-[62px] items-center justify-between border-b border-border/80 bg-background/95 px-5 backdrop-blur md:px-9">
         <div className="flex items-center gap-2 text-sm text-muted-foreground"><span className="hidden sm:inline">Registrar</span><ChevronRight size={14} className="hidden sm:block"/><span className="font-semibold text-foreground">{title}</span></div>
-        <div className="flex items-center gap-3"><span className="hidden text-xs text-muted-foreground sm:inline">Records are up to date</span><span className="h-2 w-2 rounded-full bg-emerald-600"/><span className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-card text-[11px] font-bold text-primary">RD</span></div>
+         <div className="flex items-center gap-3"><span className="hidden text-xs text-muted-foreground sm:inline">Records are up to date</span><span className="h-2 w-2 rounded-full bg-emerald-600"/><span className="flex h-8 w-8 items-center justify-center rounded-full border border-border bg-card text-[11px] font-bold text-primary">{userMark}</span><button type="button" onClick={() => signOut({ redirectUrl: basePath || '/' })} className="text-xs font-semibold text-muted-foreground hover:text-foreground" data-testid="button-sign-out">Sign out</button></div>
       </header>
       <main className="page-enter mx-auto max-w-[1440px] px-4 py-6 md:px-9 md:py-8">{children}</main>
     </div>
@@ -305,17 +368,164 @@ function DetailField({ label, value, mono = false }: { label: string; value: Rea
   return <div><p className="mb-1.5 text-[10px] font-bold uppercase tracking-[.13em] text-muted-foreground">{label}</p><div className={`text-sm font-medium ${mono ? 'font-mono text-[12px]' : ''}`} data-testid={`field-${label.toLowerCase().replaceAll(' ', '-')}`}>{value}</div></div>;
 }
 
-function Router() {
-  return <RoutedErrorBoundary><Shell><Switch>
-    <Route path="/" component={Dashboard}/>
-    <Route path="/students" component={StudentDirectory}/>
-    <Route path="/students/:id">{(params) => <StudentDetail params={params}/>}</Route>
+function LandingPage() {
+  return <div className="min-h-[100dvh] overflow-hidden bg-[#f6f4eb] text-[#263b34]">
+    <header className="relative z-10 mx-auto flex max-w-[1280px] items-center justify-between px-5 py-5 md:px-10 md:py-7">
+      <Link href="/" className="flex items-center gap-3" aria-label="Cedar Registry home">
+        <img src={`${basePath}/logo.svg`} className="h-10 w-10" alt="" />
+        <span><span className="block font-serif text-[17px] font-extrabold tracking-tight">Cedar Registry</span><span className="block text-[9px] font-semibold uppercase tracking-[.2em] text-[#65776d]">Student records</span></span>
+      </Link>
+      <nav className="flex items-center gap-3">
+        <Link href="/sign-in" className="hidden rounded-lg px-4 py-2.5 text-sm font-semibold text-[#435b50] hover:bg-[#e9e9de] sm:inline-flex">Staff sign in</Link>
+        <Link href="/sign-up" className="inline-flex items-center gap-2 rounded-lg bg-[#244b3e] px-4 py-2.5 text-sm font-semibold text-[#fffdf7] shadow-sm hover:bg-[#19382d]">Create account <ArrowUpRight size={15}/></Link>
+      </nav>
+    </header>
+    <main>
+      <section className="relative mx-auto grid max-w-[1280px] items-center gap-12 px-5 pb-20 pt-9 md:grid-cols-[1.03fr_.97fr] md:px-10 md:pb-28 md:pt-14">
+        <div className="relative z-10 max-w-[610px] page-enter">
+          <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-[#d8ded3] bg-[#fbfaf4] px-3 py-1.5 text-[10px] font-bold uppercase tracking-[.14em] text-[#4c6658]"><span className="h-1.5 w-1.5 rounded-full bg-[#6b9876]"/> A dedicated workspace for school registrars</div>
+          <h1 className="max-w-[650px] font-serif text-[48px] font-extrabold leading-[.98] tracking-[-.065em] sm:text-[62px] lg:text-[76px]">Every student,<br/><span className="text-[#78906f]">accounted for.</span></h1>
+          <p className="mt-7 max-w-[470px] text-base leading-7 text-[#65776d] md:text-[17px]">A steady, thoughtful place to maintain student records. Keep the details current, the register clear, and your day moving.</p>
+          <div className="mt-9 flex flex-wrap items-center gap-3">
+            <Link href="/sign-in" className="group inline-flex h-12 items-center gap-3 rounded-lg bg-[#244b3e] px-5 text-sm font-semibold text-[#fffdf7] shadow-[0_8px_20px_-10px_rgba(36,75,62,.55)] transition-transform hover:-translate-y-0.5 hover:bg-[#19382d]">Enter staff workspace <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5"/></Link>
+            <span className="inline-flex items-center gap-2 px-2 text-xs font-medium text-[#77867e]"><LockKeyhole size={14}/> Staff access only</span>
+          </div>
+          <div className="mt-12 flex items-center gap-4 border-t border-[#dedfd5] pt-5">
+            <div className="flex -space-x-2"><span className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-[#f6f4eb] bg-[#dce7dc] text-[10px] font-bold text-[#41634f]">R</span><span className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-[#f6f4eb] bg-[#eadfc8] text-[10px] font-bold text-[#7c6236]">A</span><span className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-[#f6f4eb] bg-[#dce1eb] text-[10px] font-bold text-[#50617b]">M</span></div>
+            <p className="text-xs leading-5 text-[#65776d]"><strong className="text-[#344b3f]">Made for the registrar’s desk.</strong><br/>Clear records, considered access.</p>
+          </div>
+        </div>
+        <div className="relative mx-auto w-full max-w-[610px] md:ml-auto">
+          <div className="absolute -right-12 -top-14 h-64 w-64 rounded-full bg-[#e5e8d6] blur-3xl"/>
+          <div className="absolute -bottom-8 -left-12 h-48 w-48 rounded-full bg-[#e9dfc8] blur-3xl"/>
+          <div className="relative rounded-[28px] border border-[#d9ded3] bg-[#fdfcf6] p-3 shadow-[0_30px_80px_-36px_rgba(39,62,49,.34)]">
+            <div className="overflow-hidden rounded-[20px] border border-[#e4e5db] bg-[#fffefa]">
+              <div className="flex items-center justify-between border-b border-[#e7e8df] px-5 py-4"><div className="flex items-center gap-2"><img src={`${basePath}/logo.svg`} className="h-7 w-7" alt=""/><span className="text-[11px] font-bold tracking-tight text-[#355246]">CEDAR / REGISTRY</span></div><span className="rounded-full bg-[#eff3e9] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[.1em] text-[#54725e]">Registrar view</span></div>
+              <div className="p-5 sm:p-7">
+                <div className="flex items-end justify-between"><div><p className="text-[9px] font-bold uppercase tracking-[.2em] text-[#839085]">Workspace / overview</p><h2 className="mt-2 font-serif text-2xl font-extrabold tracking-[-.04em] text-[#2b4438]">Good morning.</h2></div><span className="mb-1 text-[10px] text-[#88948a]">Today, 9:41 AM</span></div>
+                <div className="mt-6 grid grid-cols-3 gap-2.5">
+                  <div className="rounded-xl bg-[#f2f4eb] p-3"><span className="block text-[9px] font-semibold uppercase tracking-[.08em] text-[#718175]">Enrolled</span><strong className="mt-2 block font-serif text-2xl text-[#304b3e]">1,284</strong><span className="mt-1 block text-[9px] text-[#88948a]">In the register</span></div>
+                  <div className="rounded-xl bg-[#f5f0e3] p-3"><span className="block text-[9px] font-semibold uppercase tracking-[.08em] text-[#857656]">Active</span><strong className="mt-2 block font-serif text-2xl text-[#675b3f]">1,106</strong><span className="mt-1 block text-[9px] text-[#9b8e71]">Current enrollment</span></div>
+                  <div className="rounded-xl bg-[#eef1f1] p-3"><span className="block text-[9px] font-semibold uppercase tracking-[.08em] text-[#748285]">Programs</span><strong className="mt-2 block font-serif text-2xl text-[#465c61]">18</strong><span className="mt-1 block text-[9px] text-[#8b999a]">Across the school</span></div>
+                </div>
+                <div className="mt-6 rounded-xl border border-[#e6e7df]">
+                  <div className="flex items-center justify-between border-b border-[#e8e9e1] px-4 py-3"><span className="text-[11px] font-bold text-[#3d5347]">Recently updated</span><span className="text-[9px] font-semibold text-[#718175]">View all records</span></div>
+                  {[['EL','Eleanor Liu','Environmental Studies','Active','bg-[#dce9df] text-[#496d53]'],['JM','Jamal Moore','Public Health','Active','bg-[#eae3d3] text-[#796542]'],['SK','Sofia Kim','Applied Mathematics','Graduated','bg-[#e0e4eb] text-[#59667d]']].map(([mark, name, program, state, tint]) => <div key={name} className="flex items-center gap-3 border-b border-[#eeeee7] px-4 py-3 last:border-0"><span className={`flex h-8 w-8 items-center justify-center rounded-full text-[9px] font-bold ${tint}`}>{mark}</span><span className="min-w-0 flex-1"><span className="block truncate text-[10px] font-bold text-[#344b3f]">{name}</span><span className="mt-0.5 block truncate text-[9px] text-[#89948a]">{program}</span></span><span className={`rounded-full px-2 py-1 text-[8px] font-semibold ${state === 'Active' ? 'bg-[#eff4ea] text-[#54745a]' : 'bg-[#edf0f5] text-[#66728a]'}`}>{state}</span></div>)}
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="absolute -bottom-5 right-5 flex items-center gap-3 rounded-xl border border-[#e2e4d9] bg-[#fffefa] px-4 py-3 shadow-lg shadow-[#263b34]/10"><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#e9f0e6] text-[#4f7256]"><ShieldCheck size={16}/></span><span><strong className="block text-[10px] text-[#40594a]">Private by design</strong><small className="mt-0.5 block text-[9px] text-[#859087]">Access for approved staff</small></span></div>
+        </div>
+      </section>
+      <section className="border-y border-[#e2e2d8] bg-[#eeefe5]">
+        <div className="mx-auto grid max-w-[1280px] gap-8 px-5 py-10 md:grid-cols-[.8fr_1.2fr] md:items-center md:px-10">
+          <p className="max-w-[260px] text-[11px] font-bold uppercase leading-5 tracking-[.15em] text-[#78867b]">The record is the foundation. Make every detail count.</p>
+          <div className="grid gap-6 sm:grid-cols-3">{[['01','One dependable register'],['02','Clear student histories'],['03','A calmer daily workflow']].map(([num, label]) => <div key={num} className="flex items-center gap-3"><span className="font-mono text-[10px] text-[#9a8a60]">{num}</span><span className="text-sm font-semibold text-[#3d5548]">{label}</span></div>)}</div>
+        </div>
+      </section>
+      <section className="mx-auto grid max-w-[1280px] gap-12 px-5 py-16 md:grid-cols-2 md:gap-20 md:px-10 md:py-24">
+        <div><p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#8d805e]">A better registrar routine</p><h2 className="mt-4 max-w-[480px] font-serif text-[35px] font-extrabold leading-[1.04] tracking-[-.05em] text-[#2b4438] md:text-[46px]">Less searching.<br/>More certainty.</h2><p className="mt-5 max-w-[430px] text-sm leading-7 text-[#6e7c72]">Cedar Registry gives school staff a shared, structured view of the people behind every student record—without making daily work feel complicated.</p></div>
+        <div className="space-y-3">
+          <div className="flex gap-4 rounded-2xl border border-[#e0e2d8] bg-[#fbfaf4] p-5"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e8eee4] text-[#496d53]"><Search size={17}/></span><div><h3 className="text-sm font-bold text-[#3d5347]">Find the right record quickly</h3><p className="mt-1 text-xs leading-5 text-[#77847a]">Search the directory by name, student ID, or email. Narrow the view by program and enrollment status.</p></div></div>
+          <div className="flex gap-4 rounded-2xl border border-[#e0e2d8] bg-[#fbfaf4] p-5"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#f1ecdc] text-[#826e42]"><BookOpen size={17}/></span><div><h3 className="text-sm font-bold text-[#3d5347]">Keep every detail in context</h3><p className="mt-1 text-xs leading-5 text-[#77847a]">Review enrollment, program placement, contact details, and the record’s current status together.</p></div></div>
+          <div className="flex gap-4 rounded-2xl border border-[#e0e2d8] bg-[#fbfaf4] p-5"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#e7eaee] text-[#586a7b]"><ShieldCheck size={17}/></span><div><h3 className="text-sm font-bold text-[#3d5347]">For approved school staff</h3><p className="mt-1 text-xs leading-5 text-[#77847a]">Sign-in is only the first step. The registrar workspace is reserved for accounts approved by your school.</p></div></div>
+        </div>
+      </section>
+      <section className="mx-5 mb-16 overflow-hidden rounded-[24px] bg-[#284b3e] md:mx-auto md:mb-20 md:max-w-[1200px]">
+        <div className="relative flex flex-col gap-8 px-6 py-9 text-[#f8f6ed] md:flex-row md:items-center md:justify-between md:px-12 md:py-12"><div className="absolute -right-12 -top-24 h-64 w-64 rounded-full border border-[#8fa48d]/20"/><div className="relative"><p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#c7d0bb]">Your registrar workspace</p><h2 className="mt-3 max-w-[580px] font-serif text-3xl font-extrabold tracking-[-.045em] md:text-[40px]">Start with a clear register.</h2><p className="mt-3 text-sm text-[#d0d8ca]">Sign in with your approved staff account to continue.</p></div><Link href="/sign-in" className="relative inline-flex h-12 shrink-0 items-center justify-center gap-3 rounded-lg bg-[#e5d8b6] px-5 text-sm font-bold text-[#2d4739] hover:bg-[#f1e7ce]">Staff sign in <ArrowRight size={16}/></Link></div>
+      </section>
+    </main>
+    <footer className="border-t border-[#e1e2d8] px-5 py-6 md:px-10"><div className="mx-auto flex max-w-[1280px] flex-col gap-2 text-[10px] text-[#839086] sm:flex-row sm:items-center sm:justify-between"><span>© {new Date().getFullYear()} Cedar Registry · Registrar workspace</span><span className="inline-flex items-center gap-1.5"><LockKeyhole size={11}/> Private student records. Staff access only.</span></div></footer>
+  </div>;
+}
+
+function HomeRedirect() {
+  const { isLoaded, isSignedIn } = useAuth();
+  if (!isLoaded) return <div className="min-h-[100dvh] bg-[#f6f4eb] p-8"><div className="mx-auto h-8 max-w-5xl animate-pulse rounded bg-[#e5e7dc]"/></div>;
+  return isSignedIn ? <Redirect to="/dashboard"/> : <LandingPage/>;
+}
+
+function AuthPage({ mode }: { mode: 'sign-in' | 'sign-up' }) {
+  return <div className="relative flex min-h-[100dvh] items-center justify-center overflow-hidden bg-[#f4f2e9] px-4 py-10">
+    <div className="pointer-events-none absolute -left-32 top-[-6rem] h-[28rem] w-[28rem] rounded-full bg-[#e7eadc] blur-3xl"/>
+    <div className="pointer-events-none absolute -right-36 bottom-[-8rem] h-[28rem] w-[28rem] rounded-full bg-[#e9e0cc] blur-3xl"/>
+    <Link href="/" className="absolute left-5 top-5 z-10 flex items-center gap-2.5 md:left-10 md:top-8"><img src={`${basePath}/logo.svg`} className="h-9 w-9" alt=""/><span className="font-serif text-sm font-extrabold text-[#304b3e]">Cedar Registry</span></Link>
+    <div className="relative z-10 grid w-full max-w-[990px] items-center gap-10 md:grid-cols-[.8fr_1fr] md:gap-14">
+      <div className="hidden md:block"><p className="text-[10px] font-bold uppercase tracking-[.2em] text-[#8d805e]">Registrar workspace</p><h1 className="mt-4 font-serif text-[42px] font-extrabold leading-[1.04] tracking-[-.05em] text-[#2b4438]">{mode === 'sign-in' ? 'Good to have you back.' : 'Your staff account starts here.'}</h1><p className="mt-4 max-w-[330px] text-sm leading-6 text-[#718077]">{mode === 'sign-in' ? 'Sign in to continue to the student register and your daily records.' : 'Create an account with your school email. Workspace access is approved separately.'}</p><div className="mt-8 flex items-center gap-3 border-t border-[#dfe1d7] pt-5 text-xs text-[#68786e]"><ShieldCheck size={17} className="text-[#5e8065]"/> Student data is only available to approved staff.</div></div>
+      <div className="w-full">{mode === 'sign-in' ? <SignIn routing="path" path={`${basePath}/sign-in`} signUpUrl={`${basePath}/sign-up`}/> : <SignUp routing="path" path={`${basePath}/sign-up`} signInUrl={`${basePath}/sign-in`}/>}</div>
+    </div>
+  </div>;
+}
+
+function StaffAccessGate({ children }: { children: ReactNode }) {
+  const { isLoaded, isSignedIn } = useAuth();
+  const access = useGetStaffAccess({ query: { enabled: isLoaded && !!isSignedIn, queryKey: getGetStaffAccessQueryKey(), retry: 1 } });
+  if (!isLoaded) return <div className="grid min-h-[100dvh] place-items-center bg-background"><div className="w-64 space-y-3"><div className="h-3 animate-pulse rounded bg-secondary"/><div className="h-3 w-2/3 animate-pulse rounded bg-secondary"/></div></div>;
+  if (!isSignedIn) return <Redirect to="/sign-in"/>;
+  if (access.isLoading) return <div className="grid min-h-[100dvh] place-items-center bg-background"><div className="w-72 space-y-4 rounded-xl border border-border bg-card p-6"><div className="h-8 w-8 animate-pulse rounded-lg bg-secondary"/><div className="h-3 animate-pulse rounded bg-secondary"/><div className="h-3 w-3/4 animate-pulse rounded bg-secondary"/></div></div>;
+  if (access.isError) return <main className="grid min-h-[100dvh] place-items-center bg-[#f6f4eb] px-5"><section className="max-w-md rounded-2xl border border-[#dedfd5] bg-[#fffefa] p-8 text-center shadow-sm"><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#f3eadb] text-[#7c6740]"><ShieldCheck size={22}/></span><h1 className="mt-5 font-serif text-2xl font-extrabold text-[#304b3e]">Access could not be confirmed</h1><p className="mt-2 text-sm leading-6 text-[#718077]">We could not verify your staff access just now. Your student records remain protected. Please try again.</p><Button className="mt-5" onClick={() => access.refetch()} disabled={access.isFetching}>Try again</Button></section></main>;
+  if (!access.data?.allowed) return <main className="grid min-h-[100dvh] place-items-center bg-[#f6f4eb] px-5"><section className="max-w-md rounded-2xl border border-[#dedfd5] bg-[#fffefa] p-8 text-center shadow-sm"><span className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-[#f3eadb] text-[#7c6740]"><LockKeyhole size={21}/></span><p className="mt-5 text-[10px] font-bold uppercase tracking-[.2em] text-[#8d805e]">Cedar Registry · staff access</p><h1 className="mt-2 font-serif text-2xl font-extrabold text-[#304b3e]">This workspace is restricted</h1><p className="mt-2 text-sm leading-6 text-[#718077]">Your account is signed in, but it is not approved for the registrar workspace. Contact your school administrator if you believe you should have access.</p><div className="mt-6 flex justify-center gap-3"><Link href="/" className="inline-flex h-10 items-center rounded-lg border border-[#d9ded3] px-4 text-sm font-semibold text-[#52675a] hover:bg-[#f3f3eb]">Return home</Link><SignOutButton/></div></section></main>;
+  return <>{children}</>;
+}
+
+function SignOutButton() {
+  const { signOut } = useClerk();
+  return <Button variant="outline" onClick={() => signOut({ redirectUrl: basePath || '/' })}>Sign out</Button>;
+}
+
+function ClerkQueryClientCacheInvalidator() {
+  const { addListener } = useClerk();
+  const queryClient = useQueryClient();
+  const prevUserIdRef = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const unsubscribe = addListener(({ user }) => {
+      const userId = user?.id ?? null;
+      if (prevUserIdRef.current !== undefined && prevUserIdRef.current !== userId) queryClient.clear();
+      prevUserIdRef.current = userId;
+    });
+    return unsubscribe;
+  }, [addListener, queryClient]);
+  return null;
+}
+
+function AppRoutes() {
+  return <Switch>
+    <Route path="/" component={HomeRedirect}/>
+    <Route path="/sign-in/*?" component={() => <AuthPage mode="sign-in"/>}/>
+    <Route path="/sign-up/*?" component={() => <AuthPage mode="sign-up"/>}/>
+    <Route path="/dashboard"><StaffAccessGate><RoutedErrorBoundary><Shell><Dashboard/></Shell></RoutedErrorBoundary></StaffAccessGate></Route>
+    <Route path="/students"><StaffAccessGate><RoutedErrorBoundary><Shell><StudentDirectory/></Shell></RoutedErrorBoundary></StaffAccessGate></Route>
+    <Route path="/students/:id">{(params) => <StaffAccessGate><RoutedErrorBoundary><Shell><StudentDetail params={params}/></Shell></RoutedErrorBoundary></StaffAccessGate>}</Route>
     <Route component={NotFound}/>
-  </Switch></Shell></RoutedErrorBoundary>;
+  </Switch>;
+}
+
+function ClerkProviderWithRoutes() {
+  const [, setLocation] = useLocation();
+  return <ClerkProvider
+    publishableKey={clerkPubKey}
+    proxyUrl={clerkProxyUrl}
+    appearance={clerkAppearance}
+    signInUrl={`${basePath}/sign-in`}
+    signUpUrl={`${basePath}/sign-up`}
+    routerPush={(to) => setLocation(stripBase(to))}
+    routerReplace={(to) => setLocation(stripBase(to), { replace: true })}
+    localization={{
+      signIn: { start: { title: 'Welcome back', subtitle: 'Sign in to your Cedar Registry workspace' } },
+      signUp: { start: { title: 'Create your staff account', subtitle: 'Use your school email to register' } },
+    }}
+  >
+    <QueryClientProvider client={queryClient}>
+      <ClerkQueryClientCacheInvalidator/>
+      <TooltipProvider><AppRoutes/><Toaster/></TooltipProvider>
+    </QueryClientProvider>
+  </ClerkProvider>;
 }
 
 function App() {
-  return <QueryClientProvider client={queryClient}><TooltipProvider><WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}><Router/></WouterRouter><Toaster/></TooltipProvider></QueryClientProvider>;
+  if (!clerkPubKey) throw new Error('Missing VITE_CLERK_PUBLISHABLE_KEY in .env file');
+  return <WouterRouter base={basePath}><ClerkProviderWithRoutes/></WouterRouter>;
 }
 
 export default App;

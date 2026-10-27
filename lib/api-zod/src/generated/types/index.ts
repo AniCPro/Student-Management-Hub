@@ -10,6 +10,7 @@ export * from './dashboardSummary';
 export * from './dashboardSummaryByProgramItem';
 export * from './healthStatus';
 export * from './listStudentsParams';
+export * from './staffAccess';
 export * from './student';
 export * from './studentInput';
 export * from './studentStatus';

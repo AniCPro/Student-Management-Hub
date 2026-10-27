@@ -74,6 +74,20 @@ paths:
                 $ref: "#/components/schemas/Student"
         "409":
           description: Email is already in use
+  /staff/access:
+    get:
+      operationId: getStaffAccess
+      tags: [students]
+      summary: Check current staff access
+      responses:
+        "200":
+          description: Whether the signed-in user is approved staff
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StaffAccess"
+        "401":
+          description: Sign-in required
   /students/{id}:
     get:
       operationId: getStudent
@@ -158,6 +172,12 @@ components:
     StudentStatus:
       type: string
       enum: [Active, Inactive, Graduated]
+    StaffAccess:
+      type: object
+      required: [allowed]
+      properties:
+        allowed:
+          type: boolean
     Student:
       type: object
       required:

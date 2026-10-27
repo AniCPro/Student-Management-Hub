@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { getAuth } from "@clerk/express";
 import {
   CreateStudentBody,
   CreateStudentResponse,
@@ -15,8 +16,26 @@ import {
 import { Types } from "mongoose";
 import { Counter, Student, toStudentDto, type StudentRecord } from "../models/student";
 import { connectMongo } from "../lib/mongo";
+import { hasStaffAccess, requireSignedIn, requireStaff } from "../middlewares/staffAccess";
 
 const router: IRouter = Router();
+
+router.get("/staff/access", requireSignedIn, async (req, res): Promise<void> => {
+  const { userId } = getAuth(req);
+  if (!userId) {
+    res.status(401).json({ error: "Sign-in required." });
+    return;
+  }
+
+  try {
+    res.json({ allowed: await hasStaffAccess(userId) });
+  } catch (error) {
+    req.log.error({ err: error }, "Could not verify staff access");
+    res.status(503).json({ error: "Staff access could not be verified." });
+  }
+});
+
+router.use(requireStaff);
 
 function isDuplicateKeyError(error: unknown): boolean {
   return (

@@ -28,6 +28,7 @@ import type {
   DashboardSummary,
   HealthStatus,
   ListStudentsParams,
+  StaffAccess,
   Student,
   StudentInput,
   StudentUpdate
@@ -357,6 +358,107 @@ export const useCreateStudent = <TError = ErrorType<void>,
       > => {
       return useMutation(getCreateStudentMutationOptions(options), queryClient);
     }
+
+export const getGetStaffAccessUrl = () => {
+
+
+
+
+  return `/api/staff/access`
+}
+
+/**
+ * @summary Check current staff access
+ */
+export const getStaffAccess = async ( options?: Parameters<typeof customFetch>[1]): Promise<StaffAccess> => {
+
+  return customFetch<StaffAccess>(getGetStaffAccessUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStaffAccessQueryKey = () => {
+    return [
+    `/api/staff/access`
+    ] as const;
+    }
+
+
+export const getGetStaffAccessQueryOptions = <TData = Awaited<ReturnType<typeof getStaffAccess>>, TError = ErrorType<void>>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStaffAccess>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStaffAccessQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getStaffAccess>>> = ({ signal }) => getStaffAccess({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getStaffAccess>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetStaffAccessQueryResult = NonNullable<Awaited<ReturnType<typeof getStaffAccess>>>
+export type GetStaffAccessQueryError = ErrorType<void>
+
+
+export function useGetStaffAccess<TData = Awaited<ReturnType<typeof getStaffAccess>>, TError = ErrorType<void>>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStaffAccess>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getStaffAccess>>,
+          TError,
+          Awaited<ReturnType<typeof getStaffAccess>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetStaffAccess<TData = Awaited<ReturnType<typeof getStaffAccess>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStaffAccess>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getStaffAccess>>,
+          TError,
+          Awaited<ReturnType<typeof getStaffAccess>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetStaffAccess<TData = Awaited<ReturnType<typeof getStaffAccess>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStaffAccess>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+/**
+ * @summary Check current staff access
+ */
+
+export function useGetStaffAccess<TData = Awaited<ReturnType<typeof getStaffAccess>>, TError = ErrorType<void>>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getStaffAccess>>, TError, TData>>, request?: SecondParameter<typeof customFetch>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetStaffAccessQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetStudentUrl = (id: string,) => {
 

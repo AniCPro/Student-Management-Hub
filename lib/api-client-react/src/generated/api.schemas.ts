@@ -18,6 +18,10 @@ export const StudentStatus = {
   Graduated: 'Graduated',
 } as const;
 
+export interface StaffAccess {
+  allowed: boolean;
+}
+
 export interface Student {
   id: string;
   studentId: string;
