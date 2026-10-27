@@ -70,7 +70,7 @@ Make sure you have the following installed on your machine:
 
 ### **1. Clone the Repository**
 ```bash
-git clone https://github.com/your-username/mern-student-management.git
+git clone https://github.com/AniCPro/Student-Management-Hub.git
 cd mern-student-management
 ```
 
