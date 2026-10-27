@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Student Management System"
+description = "A MERN-based student management app for organizing student profiles, tracking enrollment and academic status, and reviewing key school metrics."
+version = "1.0.0"
+id = "artifacts/student-management"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18301
+
+[services.development]
+run = "pnpm --filter @workspace/student-management run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/student-management", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/student-management/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18301"
+BASE_PATH = "/"

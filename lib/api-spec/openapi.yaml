@@ -10,6 +10,10 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: students
+    description: Student records
+  - name: dashboard
+    description: School overview
 paths:
   /healthz:
     get:
@@ -24,6 +28,124 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /students:
+    get:
+      operationId: listStudents
+      tags: [students]
+      summary: List and filter students
+      parameters:
+        - in: query
+          name: q
+          schema:
+            type: string
+        - in: query
+          name: status
+          schema:
+            $ref: "#/components/schemas/StudentStatus"
+        - in: query
+          name: program
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Matching students
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Student"
+    post:
+      operationId: createStudent
+      tags: [students]
+      summary: Create a student
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StudentInput"
+      responses:
+        "201":
+          description: Student created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Student"
+        "409":
+          description: Email is already in use
+  /students/{id}:
+    get:
+      operationId: getStudent
+      tags: [students]
+      summary: Get a student
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Student record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Student"
+        "404":
+          description: Student not found
+    patch:
+      operationId: updateStudent
+      tags: [students]
+      summary: Update a student
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StudentUpdate"
+      responses:
+        "200":
+          description: Student updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Student"
+        "404":
+          description: Student not found
+    delete:
+      operationId: deleteStudent
+      tags: [students]
+      summary: Delete a student
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Student deleted
+        "404":
+          description: Student not found
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get student dashboard metrics
+      responses:
+        "200":
+          description: Dashboard metrics and recently added students
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +155,126 @@ components:
           type: string
       required:
         - status
+    StudentStatus:
+      type: string
+      enum: [Active, Inactive, Graduated]
+    Student:
+      type: object
+      required:
+        - id
+        - studentId
+        - firstName
+        - lastName
+        - email
+        - program
+        - year
+        - enrollmentDate
+        - status
+        - createdAt
+      properties:
+        id:
+          type: string
+        studentId:
+          type: string
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+        phone:
+          type: ["string", "null"]
+        program:
+          type: string
+        year:
+          type: integer
+          minimum: 1
+          maximum: 8
+        enrollmentDate:
+          type: string
+          format: date
+        status:
+          $ref: "#/components/schemas/StudentStatus"
+        createdAt:
+          type: string
+          format: date-time
+    StudentInput:
+      type: object
+      required: [firstName, lastName, email, program, year, enrollmentDate]
+      properties:
+        firstName:
+          type: string
+          minLength: 1
+        lastName:
+          type: string
+          minLength: 1
+        email:
+          type: string
+          format: email
+        phone:
+          type: ["string", "null"]
+        program:
+          type: string
+          minLength: 1
+        year:
+          type: integer
+          minimum: 1
+          maximum: 8
+        enrollmentDate:
+          type: string
+          format: date
+        status:
+          $ref: "#/components/schemas/StudentStatus"
+    StudentUpdate:
+      type: object
+      properties:
+        firstName:
+          type: string
+          minLength: 1
+        lastName:
+          type: string
+          minLength: 1
+        email:
+          type: string
+          format: email
+        phone:
+          type: ["string", "null"]
+        program:
+          type: string
+          minLength: 1
+        year:
+          type: integer
+          minimum: 1
+          maximum: 8
+        enrollmentDate:
+          type: string
+          format: date
+        status:
+          $ref: "#/components/schemas/StudentStatus"
+    DashboardSummary:
+      type: object
+      required: [totalStudents, activeStudents, inactiveStudents, graduatedStudents, byProgram, recentStudents]
+      properties:
+        totalStudents:
+          type: integer
+        activeStudents:
+          type: integer
+        inactiveStudents:
+          type: integer
+        graduatedStudents:
+          type: integer
+        byProgram:
+          type: array
+          items:
+            type: object
+            required: [program, count]
+            properties:
+              program:
+                type: string
+              count:
+                type: integer
+        recentStudents:
+          type: array
+          items:
+            $ref: "#/components/schemas/Student"
 
